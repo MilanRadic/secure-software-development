@@ -50,10 +50,17 @@ def register():
     username = data.get('username')
     password = data.get('password')
     role = data.get('role')
+    name = data.get('name')
+    email = data.get('email')
+    notes = data.get('notes')
     
     # Validate input
     if not username or not password or not role:
         return jsonify({"message": "Missing required fields: username, password, and role are required"}), 400
+    
+    # Validate additional fields
+    if not name or not email:
+        return jsonify({"message": "Missing required fields: name and email are required"}), 400
     
     # Check if username already exists
     existing_user = User.query.filter_by(username=username).first()
@@ -83,6 +90,28 @@ def register():
         )
         db.session.add(new_user)
         db.session.commit()
+        
+        # Send user info to Service
+        user_info = {
+            "id": new_user.id,
+            "name": name,
+            "role": role,
+            "email": email,
+            "notes": notes if notes else ""
+        }
+        
+        try:
+            service_response = requests.post(
+                f"{SERVICE_URL}/user",
+                json=user_info,
+                timeout=5
+            )
+            service_response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            # If service call fails, rollback the user creation
+            db.session.delete(new_user)
+            db.session.commit()
+            return jsonify({"message": f"Registration failed: Could not create user in service - {str(e)}"}), 400
         
         response = {
             "message": "User registered successfully"
